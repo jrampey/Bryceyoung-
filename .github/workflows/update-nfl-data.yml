@@ -44,7 +44,7 @@ jobs:
               for kind,stype in (("reg",2),("post",3)):
                   url=("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/"
                        "statistics/byathlete?"+urllib.parse.urlencode({
-                         "season":year,"seasontype":stype,"category":"passing","limit":500
+                         "season":year,"seasontype":stype,"category":0
                        }))
                   try:
                       raw=get(url)
