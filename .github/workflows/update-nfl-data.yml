@@ -1,4 +1,4 @@
-name: Update ESPN QB Data
+name: Update NFL QB Data
 
 on:
   workflow_dispatch:
@@ -24,99 +24,60 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Fetch ESPN quarterback statistics
+      - name: Fetch nflverse QB statistics
         run: |
           python - <<'PY'
-          import json, urllib.request
+          import csv, io, json, urllib.request
           from datetime import datetime, timezone
           from pathlib import Path
 
-          HEADERS={"User-Agent":"Mozilla/5.0"}
+          HEADERS={"User-Agent":"BryceYoungTracker/1.0"}
           out=Path("data"); out.mkdir(exist_ok=True)
           current=datetime.now().year
 
-          def get(url):
+          def fetch(url):
               req=urllib.request.Request(url,headers=HEADERS)
               with urllib.request.urlopen(req,timeout=60) as r:
-                  return json.load(r)
+                  return r.read().decode("utf-8-sig")
 
-          def ref(url):
-              return url.replace("http://","https://").replace(".pvt",".com")
+          def n(v):
+              try: return float(v or 0)
+              except: return 0
 
           for year in range(2023,current+1):
-              athletes={"items":[]}
-              page=1
-              while True:
-                  batch=get(f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/athletes?limit=100&page={page}")
-                  items=batch.get("items",[])
-                  athletes["items"].extend(items)
-                  if not items or page >= int(batch.get("pageCount",page)): break
-                  page += 1
-              print("athletes",year,len(athletes["items"]))
-              players=[]
-              for item in athletes.get("items",[]):
+              for kind in ("reg","post"):
+                  url=f"https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_{kind}_{year}.csv"
                   try:
-                      a=get(ref(item["$ref"]))
-                      pos=(a.get("position") or {}).get("$ref","")
-                      if "/positions/8" not in pos and a.get("position",{}).get("abbreviation")!="QB":
-                          # Resolve position only when abbreviation is not embedded.
-                          if pos:
-                              p=get(ref(pos))
-                              if p.get("abbreviation")!="QB": continue
-                          else: continue
-                      aid=a.get("id")
-                      if not aid: continue
-                      team="—"
-                      teamref=(a.get("team") or {}).get("$ref")
-                      if teamref:
-                          try: team=get(ref(teamref)).get("abbreviation","—")
-                          except: pass
-                      for kind,stype in (("reg",2),("post",3)):
-                          try:
-                              s=get(f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/types/{stype}/athletes/{aid}/statistics/0")
-                          except:
-                              continue
-                          vals={}
-                          for cat in (s.get("splits") or {}).get("categories",[]):
-                              for stat in cat.get("stats",[]):
-                                  vals[stat.get("name","")]=stat.get("value",stat.get("displayValue",0))
-                          row={
-                            "player_id":str(aid),"player_display_name":a.get("displayName") or a.get("fullName") or "Unknown",
-                            "team":team,"position":"QB","games":vals.get("gamesPlayed",vals.get("games",0)),
-                            "completions":vals.get("completions",0),"attempts":vals.get("passingAttempts",0),
-                            "passing_yards":vals.get("passingYards",0),"passing_tds":vals.get("passingTouchdowns",vals.get("touchdowns",0)),
-                            "interceptions":vals.get("interceptions",0),"sacks":vals.get("sacks",0),"sack_yards":vals.get("sackYardsLost",0),
-                            "passing_air_yards":vals.get("airYards",0),"passing_yards_after_catch":vals.get("yardsAfterCatch",0),
-                            "passing_first_downs":vals.get("passingFirstDowns",0),"passing_epa":0,
-                            "passing_2pt_conversions":vals.get("twoPointPassConvs",0),"carries":vals.get("rushingAttempts",0),
-                            "rushing_yards":vals.get("rushingYards",0),"rushing_tds":vals.get("rushingTouchdowns",0),
-                            "rushing_first_downs":vals.get("rushingFirstDowns",0),"rushing_epa":0,
-                            "rushing_2pt_conversions":vals.get("twoPointRushConvs",0),"fantasy_points":0,"fantasy_points_ppr":0
-                          }
-                          path=out/f"espn_qbs_{kind}_{year}.json"
-                          old={"players":[]}
-                          if path.exists():
-                              try: old=json.loads(path.read_text())
-                              except: pass
-                          old["players"]=[x for x in old.get("players",[]) if x.get("player_id")!=str(aid)]
-                          old["players"].append(row)
-                          old.update({"season":year,"type":kind.upper(),"updated_at":datetime.now(timezone.utc).isoformat(),"source":"ESPN Core API"})
-                          path.write_text(json.dumps(old,separators=(",",":")),encoding="utf-8")
+                      rows=list(csv.DictReader(io.StringIO(fetch(url))))
                   except Exception as e:
-                      print("skip athlete",e)
-
-          for p in out.glob("espn_qbs_*.json"):
-              d=json.loads(p.read_text())
-              d["players"].sort(key=lambda x: float(x.get("passing_yards") or 0),reverse=True)
-              p.write_text(json.dumps(d,separators=(",",":")),encoding="utf-8")
-              print(p,len(d["players"]))
+                      print("skip",year,kind,e); continue
+                  players=[]
+                  for r in rows:
+                      if (r.get("position") or "").upper()!="QB": continue
+                      players.append({
+                        "player_id":r.get("player_id",""),"player_display_name":r.get("player_display_name") or r.get("player_name") or "Unknown",
+                        "team":r.get("recent_team") or r.get("team") or "—","position":"QB",
+                        "games":n(r.get("games")),"completions":n(r.get("completions")),"attempts":n(r.get("attempts")),
+                        "passing_yards":n(r.get("passing_yards")),"passing_tds":n(r.get("passing_tds")),"interceptions":n(r.get("interceptions")),
+                        "sacks":n(r.get("sacks")),"sack_yards":n(r.get("sack_yards")),"passing_air_yards":n(r.get("passing_air_yards")),
+                        "passing_yards_after_catch":n(r.get("passing_yards_after_catch")),"passing_first_downs":n(r.get("passing_first_downs")),
+                        "passing_epa":n(r.get("passing_epa")),"passing_2pt_conversions":n(r.get("passing_2pt_conversions")),
+                        "carries":n(r.get("carries")),"rushing_yards":n(r.get("rushing_yards")),"rushing_tds":n(r.get("rushing_tds")),
+                        "rushing_first_downs":n(r.get("rushing_first_downs")),"rushing_epa":n(r.get("rushing_epa")),
+                        "rushing_2pt_conversions":n(r.get("rushing_2pt_conversions")),"fantasy_points":n(r.get("fantasy_points")),
+                        "fantasy_points_ppr":n(r.get("fantasy_points_ppr"))
+                      })
+                  players.sort(key=lambda x:x["passing_yards"],reverse=True)
+                  payload={"season":year,"type":kind.upper(),"updated_at":datetime.now(timezone.utc).isoformat(),"source":"nflverse","players":players}
+                  (out/f"qbs_{kind}_{year}.json").write_text(json.dumps(payload,separators=(",",":")),encoding="utf-8")
+                  print(year,kind,len(players),"QBs")
           PY
-      - name: Commit ESPN data
+      - name: Commit NFL data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data
           git diff --cached --quiet && exit 0
-          git commit -m "Update ESPN NFL QB statistics"
+          git commit -m "Update nflverse QB statistics"
           git pull --rebase origin main
           git push origin HEAD:main
