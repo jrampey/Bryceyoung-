@@ -34,14 +34,39 @@ const wanted=[
 function csv(text){const out=[];let row=[],v='',q=false;for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];if(c=='"'){if(q&&n=='"'){v+='"';i++}else q=!q}else if(c==','&&!q){row.push(v);v=''}else if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;row.push(v);if(row.some(Boolean))out.push(row);row=[];v=''}else v+=c}return out}
 function num(v){let n=Number(v);return Number.isFinite(n)?n:0}
 async function load(){
- const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='./data/qbs_'+level+'_'+y+'.json?ts='+Date.now();
+ const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='./data/espn_qbs_'+level+'_'+y+'.json?ts='+Date.now();
  statusEl.textContent='Loading '+y+' QB stats…';
  try{
    const r=await fetch(url,{cache:'no-store'});
    if(!r.ok)throw Error('HTTP '+r.status);
    const payload=await r.json();
-   rows=Array.isArray(payload)?payload:(payload.players||[]);
-   if(!rows.length)throw Error('No QB data available for '+y);
+   const raw=payload.raw||{};
+   const items=raw.athletes||raw.items||raw.statistics||[];
+   const findStats=o=>{
+     const vals={}; const walk=x=>{
+       if(!x)return; if(Array.isArray(x)){x.forEach(walk);return}
+       if(typeof x!=='object')return;
+       if(x.name && (x.value!==undefined||x.displayValue!==undefined)) vals[x.name]=x.value??x.displayValue;
+       Object.values(x).forEach(walk);
+     }; walk(o); return vals;
+   };
+   rows=items.map(item=>{
+     const athlete=item.athlete||item.player||item;
+     const s=findStats(item);
+     return {
+       player_id:String(athlete.id||item.id||''), player_display_name:athlete.displayName||athlete.fullName||athlete.name||item.displayName||'Unknown',
+       team:(athlete.team&&((athlete.team.abbreviation)||(athlete.team.shortDisplayName)))||item.team?.abbreviation||'—',
+       position:(athlete.position?.abbreviation)||item.position?.abbreviation||'QB',
+       games:s.gamesPlayed??s.games??0, completions:s.completions??0, attempts:s.passingAttempts??s.attempts??0,
+       passing_yards:s.passingYards??0, passing_tds:s.passingTouchdowns??s.touchdowns??0, interceptions:s.interceptions??0,
+       sacks:s.sacks??0, sack_yards:s.sackYardsLost??0, passing_air_yards:0, passing_yards_after_catch:0,
+       passing_first_downs:s.passingFirstDowns??0, passing_epa:0, passing_2pt_conversions:s.twoPointPassConvs??0,
+       carries:s.rushingAttempts??s.rushAttempts??0, rushing_yards:s.rushingYards??0, rushing_tds:s.rushingTouchdowns??0,
+       rushing_first_downs:s.rushingFirstDowns??0, rushing_epa:0, rushing_2pt_conversions:s.twoPointRushConvs??0,
+       fantasy_points:0, fantasy_points_ppr:0
+     };
+   }).filter(x=>x.player_display_name!=='Unknown');
+   if(!rows.length)throw Error('ESPN returned no QB rows for '+y);
    document.querySelector('#updated').textContent='UPDATED • '+(payload.updated_at?new Date(payload.updated_at).toLocaleString():new Date().toLocaleString());
    render();
  }catch(e){
