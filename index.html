@@ -34,10 +34,21 @@ const wanted=[
 function csv(text){const out=[];let row=[],v='',q=false;for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];if(c=='"'){if(q&&n=='"'){v+='"';i++}else q=!q}else if(c==','&&!q){row.push(v);v=''}else if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;row.push(v);if(row.some(Boolean))out.push(row);row=[];v=''}else v+=c}return out}
 function num(v){let n=Number(v);return Number.isFinite(n)?n:0}
 async function load(){
- const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_'+level+'_'+y+'.csv';
- statusEl.textContent='Loading '+y+' player stats…';
- try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const a=csv(await r.text()),h=a.shift();rows=a.map(x=>Object.fromEntries(h.map((k,i)=>[k,x[i]??'']))).filter(x=>x.position==='QB'); if(!rows.length) throw Error('No QB rows returned for '+y);
- document.querySelector('#updated').textContent='LIVE DATA • '+new Date().toLocaleString(); render();}catch(e){statusEl.innerHTML='Could not load nflverse data in this browser. <b>'+e.message+'</b>';document.querySelector('#table').innerHTML=''}
+ const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='./data/qbs_'+level+'_'+y+'.json?ts='+Date.now();
+ statusEl.textContent='Loading '+y+' QB stats…';
+ try{
+   const r=await fetch(url,{cache:'no-store'});
+   if(!r.ok)throw Error('HTTP '+r.status);
+   const payload=await r.json();
+   rows=Array.isArray(payload)?payload:(payload.players||[]);
+   if(!rows.length)throw Error('No QB data available for '+y);
+   document.querySelector('#updated').textContent='UPDATED • '+(payload.updated_at?new Date(payload.updated_at).toLocaleString():new Date().toLocaleString());
+   render();
+ }catch(e){
+   statusEl.innerHTML='NFL data is not available yet for '+y+'. <b>'+e.message+'</b>';
+   tableEl.innerHTML='';
+   cardsEl.innerHTML='';
+ }
 }
 function aggregate(list){return list.map(x=>({...x}))}
 function fmt(k,v){if(['passing_epa','rushing_epa','fantasy_points','fantasy_points_ppr'].includes(k))return num(v).toFixed(1);return Math.round(num(v)).toLocaleString()}
