@@ -25,7 +25,7 @@ th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:
 <footer>Data: nflverse player statistics. Rankings are among QBs in the selected season/type. Click any column heading to sort.</footer>
 </main>
 <script>
-const seasonEl=document.querySelector('#season'),typeEl=document.querySelector('#type'),searchEl=document.querySelector('#search');
+const seasonEl=document.querySelector('#season'),typeEl=document.querySelector('#type'),searchEl=document.querySelector('#search'),statusEl=document.querySelector('#status'),cardsEl=document.querySelector('#cards'),tableEl=document.querySelector('#table');
 const current=new Date().getFullYear(); for(let y=current;y>=2023;y--) seasonEl.add(new Option(y,y));
 let rows=[],sortKey='passing_yards',sortDir=-1;
 const wanted=[
@@ -34,22 +34,22 @@ const wanted=[
 function csv(text){const out=[];let row=[],v='',q=false;for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];if(c=='"'){if(q&&n=='"'){v+='"';i++}else q=!q}else if(c==','&&!q){row.push(v);v=''}else if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;row.push(v);if(row.some(Boolean))out.push(row);row=[];v=''}else v+=c}return out}
 function num(v){let n=Number(v);return Number.isFinite(n)?n:0}
 async function load(){
- const y=seasonEl.value||current, url='https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_reg_'+y+'.csv';
- status.textContent='Loading '+y+' player stats…';
- try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const a=csv(await r.text()),h=a.shift();rows=a.map(x=>Object.fromEntries(h.map((k,i)=>[k,x[i]??'']))).filter(x=>x.position==='QB'&&x.season_type===typeEl.value);
- document.querySelector('#updated').textContent='LIVE DATA • '+new Date().toLocaleString(); render();}catch(e){status.innerHTML='Could not load nflverse data in this browser. <b>'+e.message+'</b>';document.querySelector('#table').innerHTML=''}
+ const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_'+level+'_'+y+'.csv';
+ statusEl.textContent='Loading '+y+' player stats…';
+ try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const a=csv(await r.text()),h=a.shift();rows=a.map(x=>Object.fromEntries(h.map((k,i)=>[k,x[i]??'']))).filter(x=>x.position==='QB'); if(!rows.length) throw Error('No QB rows returned for '+y);
+ document.querySelector('#updated').textContent='LIVE DATA • '+new Date().toLocaleString(); render();}catch(e){statusEl.innerHTML='Could not load nflverse data in this browser. <b>'+e.message+'</b>';document.querySelector('#table').innerHTML=''}
 }
-function aggregate(list){const map={};for(const x of list){let id=x.player_id||x.player_display_name;if(!map[id])map[id]={...x,games:0};let z=map[id];z.games++;for(const [k] of wanted.slice(2))z[k]=num(z[k])+num(x[k]);z.team=x.team||z.team}return Object.values(map)}
+function aggregate(list){return list.map(x=>({...x}))}
 function fmt(k,v){if(['passing_epa','rushing_epa','fantasy_points','fantasy_points_ppr'].includes(k))return num(v).toFixed(1);return Math.round(num(v)).toLocaleString()}
 function render(){
  let data=aggregate(rows),q=searchEl.value.toLowerCase();if(q)data=data.filter(x=>(x.player_display_name+' '+x.team).toLowerCase().includes(q));
  data.sort((a,b)=>{let A=sortKey==='player_display_name'||sortKey==='team'?a[sortKey]:num(a[sortKey]),B=sortKey==='player_display_name'||sortKey==='team'?b[sortKey]:num(b[sortKey]);return (A>B?1:A<B?-1:0)*sortDir});
  const bryce=aggregate(rows).find(x=>/Bryce Young/i.test(x.player_display_name||''));
  const ranks={};if(bryce)for(const [k] of wanted.slice(2)){let sorted=aggregate(rows).sort((a,b)=>num(b[k])-num(a[k]));ranks[k]=sorted.findIndex(x=>x.player_id===bryce.player_id)+1}
- cards.innerHTML=bryce?[['passing_yards','PASS YDS'],['passing_tds','PASS TD'],['interceptions','INT'],['passing_epa','PASS EPA'],['rushing_yards','RUSH YDS'],['rushing_tds','RUSH TD']].map(([k,l])=>'<div class="card"><span>'+l+'</span><b>'+fmt(k,bryce[k])+'</b><span>#'+ranks[k]+' among QBs</span></div>').join(''):'';
- table.innerHTML='<thead><tr>'+wanted.map(([k,l])=>'<th data-k="'+k+'">'+l+(k===sortKey?' '+(sortDir<0?'▼':'▲'):'')+'</th>').join('')+'</tr></thead><tbody>'+data.map(x=>'<tr class="'+(/Bryce Young/i.test(x.player_display_name||'')?'bryce':'')+'">'+wanted.map(([k],i)=>'<td>'+(i<2?(x[k]||'—'):fmt(k,x[k]))+(i>1&&/Bryce Young/i.test(x.player_display_name||'')?'<span class="rank">#'+ranks[k]+'</span>':'')+'</td>').join('')+'</tr>').join('')+'</tbody>';
+ cardsEl.innerHTML=bryce?[['passing_yards','PASS YDS'],['passing_tds','PASS TD'],['interceptions','INT'],['passing_epa','PASS EPA'],['rushing_yards','RUSH YDS'],['rushing_tds','RUSH TD']].map(([k,l])=>'<div class="card"><span>'+l+'</span><b>'+fmt(k,bryce[k])+'</b><span>#'+ranks[k]+' among QBs</span></div>').join(''):'';
+ tableEl.innerHTML='<thead><tr>'+wanted.map(([k,l])=>'<th data-k="'+k+'">'+l+(k===sortKey?' '+(sortDir<0?'▼':'▲'):'')+'</th>').join('')+'</tr></thead><tbody>'+data.map(x=>'<tr class="'+(/Bryce Young/i.test(x.player_display_name||'')?'bryce':'')+'">'+wanted.map(([k],i)=>'<td>'+(i<2?(x[k]||'—'):fmt(k,x[k]))+(i>1&&/Bryce Young/i.test(x.player_display_name||'')?'<span class="rank">#'+ranks[k]+'</span>':'')+'</td>').join('')+'</tr>').join('')+'</tbody>';
  document.querySelectorAll('th').forEach(th=>th.onclick=()=>{let k=th.dataset.k;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=k==='player_display_name'||k==='team'?1:-1}render()});
- status.textContent=data.length+' quarterbacks • Bryce Young highlighted in Panthers blue';
+ statusEl.textContent=data.length+' quarterbacks • Bryce Young highlighted in Panthers blue';
 }
 seasonEl.onchange=load;typeEl.onchange=load;searchEl.oninput=render;document.querySelector('#refresh').onclick=load;load();
 </script></body></html>
