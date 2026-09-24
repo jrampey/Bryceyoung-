@@ -44,7 +44,15 @@ jobs:
               return url.replace("http://","https://").replace(".pvt",".com")
 
           for year in range(2023,current+1):
-              athletes=get(f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/athletes?limit=1000")
+              athletes={"items":[]}
+              page=1
+              while True:
+                  batch=get(f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/athletes?limit=100&page={page}")
+                  items=batch.get("items",[])
+                  athletes["items"].extend(items)
+                  if not items or page >= int(batch.get("pageCount",page)): break
+                  page += 1
+              print("athletes",year,len(athletes["items"]))
               players=[]
               for item in athletes.get("items",[]):
                   try:
