@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bryce Young QB Tracker</title>
+<style>
+:root{--blue:#0085CA;--black:#101820;--silver:#BFC0BF;--white:#fff;--muted:#9ba8b2}
+*{box-sizing:border-box}body{margin:0;background:var(--black);color:var(--white);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:28px 20px;background:linear-gradient(135deg,#0085CA,#101820 72%);border-bottom:4px solid var(--blue)}
+.wrap{max-width:1400px;margin:auto}.eyebrow{font-weight:800;letter-spacing:.15em;color:#d8f2ff}.hero{display:flex;gap:18px;align-items:end;justify-content:space-between;flex-wrap:wrap}
+h1{font-size:clamp(34px,7vw,76px);line-height:.9;margin:8px 0}.tag{font-size:18px;color:#d9e3e8}
+.controls{display:flex;gap:10px;flex-wrap:wrap;padding:18px 0}.controls>*{background:#18232c;color:white;border:1px solid #33434f;border-radius:9px;padding:10px 12px}
+button{cursor:pointer}.status{color:var(--muted);padding:0 0 12px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:18px 0}
+.card{background:#18232c;border:1px solid #2c3c47;border-radius:12px;padding:15px}.card b{font-size:26px;display:block;color:#fff}.card span{color:#9fb0bb}
+.tablebox{overflow:auto;border:1px solid #31434f;border-radius:12px;background:#121c23}table{border-collapse:collapse;width:100%;min-width:1500px}
+th,td{padding:10px 12px;border-bottom:1px solid #263640;text-align:right;white-space:nowrap}th{position:sticky;top:0;background:#1b2a34;color:#c8d5dc;cursor:pointer}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:#121c23}.bryce td{background:#0085CA!important;color:white;font-weight:800}.bryce td:first-child{box-shadow:inset 5px 0 0 white}
+.rank{font-size:12px;opacity:.8;margin-left:6px}footer{padding:28px 0;color:#83949f;font-size:13px}a{color:#63c9ff}
+</style>
+</head>
+<body><header><div class="wrap"><div class="eyebrow">CAROLINA PANTHERS • QB DASHBOARD</div><div class="hero"><div><h1>BRYCE YOUNG</h1><div class="tag">Season stats vs. every NFL quarterback</div></div><div id="updated"></div></div></div></header>
+<main class="wrap">
+<div class="controls"><select id="season"></select><select id="type"><option value="REG">Regular Season</option><option value="POST">Postseason</option></select><input id="search" placeholder="Search QB or team"><button id="refresh">Refresh data</button></div>
+<div id="status" class="status">Loading NFL data…</div><div id="cards" class="cards"></div><div class="tablebox"><table id="table"></table></div>
+<footer>Data: nflverse player statistics. Rankings are among QBs in the selected season/type. Click any column heading to sort.</footer>
+</main>
+<script>
+const seasonEl=document.querySelector('#season'),typeEl=document.querySelector('#type'),searchEl=document.querySelector('#search');
+const current=new Date().getFullYear(); for(let y=current;y>=2023;y--) seasonEl.add(new Option(y,y));
+let rows=[],sortKey='passing_yards',sortDir=-1;
+const wanted=[
+['player_display_name','QB'],['team','Team'],['games','G'],['completions','Cmp'],['attempts','Att'],['passing_yards','Pass Yds'],['passing_tds','Pass TD'],['interceptions','INT'],['sacks','Sacks'],['sack_yards','Sack Yds'],['passing_air_yards','Air Yds'],['passing_yards_after_catch','YAC'],['passing_first_downs','Pass 1D'],['passing_epa','Pass EPA'],['passing_2pt_conversions','Pass 2PT'],['carries','Rush Att'],['rushing_yards','Rush Yds'],['rushing_tds','Rush TD'],['rushing_first_downs','Rush 1D'],['rushing_epa','Rush EPA'],['rushing_2pt_conversions','Rush 2PT'],['fantasy_points','Fantasy'],['fantasy_points_ppr','PPR']
+];
+function csv(text){const out=[];let row=[],v='',q=false;for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];if(c=='"'){if(q&&n=='"'){v+='"';i++}else q=!q}else if(c==','&&!q){row.push(v);v=''}else if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;row.push(v);if(row.some(Boolean))out.push(row);row=[];v=''}else v+=c}return out}
+function num(v){let n=Number(v);return Number.isFinite(n)?n:0}
+async function load(){
+ const y=seasonEl.value||current, url='https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_reg_'+y+'.csv';
+ status.textContent='Loading '+y+' player stats…';
+ try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const a=csv(await r.text()),h=a.shift();rows=a.map(x=>Object.fromEntries(h.map((k,i)=>[k,x[i]??'']))).filter(x=>x.position==='QB'&&x.season_type===typeEl.value);
+ document.querySelector('#updated').textContent='LIVE DATA • '+new Date().toLocaleString(); render();}catch(e){status.innerHTML='Could not load nflverse data in this browser. <b>'+e.message+'</b>';document.querySelector('#table').innerHTML=''}
+}
+function aggregate(list){const map={};for(const x of list){let id=x.player_id||x.player_display_name;if(!map[id])map[id]={...x,games:0};let z=map[id];z.games++;for(const [k] of wanted.slice(2))z[k]=num(z[k])+num(x[k]);z.team=x.team||z.team}return Object.values(map)}
+function fmt(k,v){if(['passing_epa','rushing_epa','fantasy_points','fantasy_points_ppr'].includes(k))return num(v).toFixed(1);return Math.round(num(v)).toLocaleString()}
+function render(){
+ let data=aggregate(rows),q=searchEl.value.toLowerCase();if(q)data=data.filter(x=>(x.player_display_name+' '+x.team).toLowerCase().includes(q));
+ data.sort((a,b)=>{let A=sortKey==='player_display_name'||sortKey==='team'?a[sortKey]:num(a[sortKey]),B=sortKey==='player_display_name'||sortKey==='team'?b[sortKey]:num(b[sortKey]);return (A>B?1:A<B?-1:0)*sortDir});
+ const bryce=aggregate(rows).find(x=>/Bryce Young/i.test(x.player_display_name||''));
+ const ranks={};if(bryce)for(const [k] of wanted.slice(2)){let sorted=aggregate(rows).sort((a,b)=>num(b[k])-num(a[k]));ranks[k]=sorted.findIndex(x=>x.player_id===bryce.player_id)+1}
+ cards.innerHTML=bryce?[['passing_yards','PASS YDS'],['passing_tds','PASS TD'],['interceptions','INT'],['passing_epa','PASS EPA'],['rushing_yards','RUSH YDS'],['rushing_tds','RUSH TD']].map(([k,l])=>'<div class="card"><span>'+l+'</span><b>'+fmt(k,bryce[k])+'</b><span>#'+ranks[k]+' among QBs</span></div>').join(''):'';
+ table.innerHTML='<thead><tr>'+wanted.map(([k,l])=>'<th data-k="'+k+'">'+l+(k===sortKey?' '+(sortDir<0?'▼':'▲'):'')+'</th>').join('')+'</tr></thead><tbody>'+data.map(x=>'<tr class="'+(/Bryce Young/i.test(x.player_display_name||'')?'bryce':'')+'">'+wanted.map(([k],i)=>'<td>'+(i<2?(x[k]||'—'):fmt(k,x[k]))+(i>1&&/Bryce Young/i.test(x.player_display_name||'')?'<span class="rank">#'+ranks[k]+'</span>':'')+'</td>').join('')+'</tr>').join('')+'</tbody>';
+ document.querySelectorAll('th').forEach(th=>th.onclick=()=>{let k=th.dataset.k;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=k==='player_display_name'||k==='team'?1:-1}render()});
+ status.textContent=data.length+' quarterbacks • Bryce Young highlighted in Panthers blue';
+}
+seasonEl.onchange=load;typeEl.onchange=load;searchEl.oninput=render;document.querySelector('#refresh').onclick=load;load();
+</script></body></html>
