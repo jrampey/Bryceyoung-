@@ -22,7 +22,7 @@ th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:
 <main class="wrap">
 <div class="controls"><select id="season"></select><select id="type"><option value="REG">Regular Season</option><option value="POST">Postseason</option></select><input id="search" placeholder="Search QB or team"><button id="refresh">Refresh data</button></div>
 <div id="status" class="status">Loading NFL data…</div><div id="cards" class="cards"></div><div class="tablebox"><table id="table"></table></div>
-<footer>Data: nflverse player statistics. Rankings are among QBs in the selected season/type. Click any column heading to sort.</footer>
+<footer>Data: ESPN. Showing the top 10 quarterbacks ranked by passing yards, plus Bryce Young if he is outside the top 10.</footer>
 </main>
 <script>
 const seasonEl=document.querySelector('#season'),typeEl=document.querySelector('#type'),searchEl=document.querySelector('#search'),statusEl=document.querySelector('#status'),cardsEl=document.querySelector('#cards'),tableEl=document.querySelector('#table');
@@ -53,14 +53,17 @@ async function load(){
 function aggregate(list){return list.map(x=>({...x}))}
 function fmt(k,v){if(['passing_epa','rushing_epa','fantasy_points','fantasy_points_ppr'].includes(k))return num(v).toFixed(1);return Math.round(num(v)).toLocaleString()}
 function render(){
- let data=aggregate(rows),q=searchEl.value.toLowerCase();if(q)data=data.filter(x=>(x.player_display_name+' '+x.team).toLowerCase().includes(q));
- data.sort((a,b)=>{let A=sortKey==='player_display_name'||sortKey==='team'?a[sortKey]:num(a[sortKey]),B=sortKey==='player_display_name'||sortKey==='team'?b[sortKey]:num(b[sortKey]);return (A>B?1:A<B?-1:0)*sortDir});
- const bryce=aggregate(rows).find(x=>/Bryce Young/i.test(x.player_display_name||''));
- const ranks={};if(bryce)for(const [k] of wanted.slice(2)){let sorted=aggregate(rows).sort((a,b)=>num(b[k])-num(a[k]));ranks[k]=sorted.findIndex(x=>x.player_id===bryce.player_id)+1}
- cardsEl.innerHTML=bryce?[['passing_yards','PASS YDS'],['passing_tds','PASS TD'],['interceptions','INT'],['passing_epa','PASS EPA'],['rushing_yards','RUSH YDS'],['rushing_tds','RUSH TD']].map(([k,l])=>'<div class="card"><span>'+l+'</span><b>'+fmt(k,bryce[k])+'</b><span>#'+ranks[k]+' among QBs</span></div>').join(''):'';
- tableEl.innerHTML='<thead><tr>'+wanted.map(([k,l])=>'<th data-k="'+k+'">'+l+(k===sortKey?' '+(sortDir<0?'▼':'▲'):'')+'</th>').join('')+'</tr></thead><tbody>'+data.map(x=>'<tr class="'+(/Bryce Young/i.test(x.player_display_name||'')?'bryce':'')+'">'+wanted.map(([k],i)=>'<td>'+(i<2?(x[k]||'—'):fmt(k,x[k]))+(i>1&&/Bryce Young/i.test(x.player_display_name||'')?'<span class="rank">#'+ranks[k]+'</span>':'')+'</td>').join('')+'</tr>').join('')+'</tbody>';
- document.querySelectorAll('th').forEach(th=>th.onclick=()=>{let k=th.dataset.k;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=k==='player_display_name'||k==='team'?1:-1}render()});
- statusEl.textContent=data.length+' quarterbacks • Bryce Young highlighted in Panthers blue';
+ const ranked=aggregate(rows).sort((a,b)=>num(b.passing_yards)-num(a.passing_yards));
+ ranked.forEach((x,i)=>x.overall_rank=i+1);
+ const bryce=ranked.find(x=>/Bryce Young/i.test(x.player_display_name||''));
+ let data=ranked.slice(0,10);
+ if(bryce&&!data.some(x=>x.player_id===bryce.player_id))data.push(bryce);
+ const q=searchEl.value.toLowerCase();
+ if(q)data=ranked.filter(x=>(x.player_display_name+' '+x.team).toLowerCase().includes(q));
+ const ranks={};if(bryce)for(const [k] of wanted.slice(2)){const sorted=aggregate(rows).sort((a,b)=>num(b[k])-num(a[k]));ranks[k]=sorted.findIndex(x=>x.player_id===bryce.player_id)+1}
+ cardsEl.innerHTML=bryce?[['passing_yards','PASS YDS'],['passing_tds','PASS TD'],['interceptions','INT'],['rushing_yards','RUSH YDS'],['rushing_tds','RUSH TD']].map(([k,l])=>'<div class="card"><span>'+l+'</span><b>'+fmt(k,bryce[k])+'</b><span>#'+ranks[k]+' among QBs</span></div>').join(''):'';
+ tableEl.innerHTML='<thead><tr><th>Rank</th>'+wanted.map(([k,l])=>'<th>'+l+'</th>').join('')+'</tr></thead><tbody>'+data.map(x=>'<tr class="'+(/Bryce Young/i.test(x.player_display_name||'')?'bryce':'')+'"><td>#'+x.overall_rank+'</td>'+wanted.map(([k],i)=>'<td>'+(i<2?(x[k]||'—'):fmt(k,x[k]))+'</td>').join('')+'</tr>').join('')+'</tbody>';
+ statusEl.textContent='Top 10 QBs by passing yards'+(bryce&&bryce.overall_rank>10?' • Bryce Young shown at #'+bryce.overall_rank:'')+' • Bryce highlighted in Panthers blue';
 }
 seasonEl.onchange=load;typeEl.onchange=load;searchEl.oninput=render;document.querySelector('#refresh').onclick=load;load();
 </script></body></html>
