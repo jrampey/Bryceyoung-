@@ -22,7 +22,7 @@ th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:
 <main class="wrap">
 <div class="controls"><select id="season"></select><select id="type"><option value="REG">Regular Season</option><option value="POST">Postseason</option></select><input id="search" placeholder="Search QB or team"><button id="refresh">Refresh data</button></div>
 <div id="status" class="status">Loading NFL data…</div><div id="cards" class="cards"></div><div class="tablebox"><table id="table"></table></div>
-<footer>Data: ESPN. Showing the top 10 quarterbacks ranked by passing yards, plus Bryce Young if he is outside the top 10.</footer>
+<footer>Data: nflverse. Showing the top 10 quarterbacks ranked by passing yards, plus Bryce Young if he is outside the top 10.</footer>
 </main>
 <script>
 const seasonEl=document.querySelector('#season'),typeEl=document.querySelector('#type'),searchEl=document.querySelector('#search'),statusEl=document.querySelector('#status'),cardsEl=document.querySelector('#cards'),tableEl=document.querySelector('#table');
@@ -34,14 +34,14 @@ const wanted=[
 function csv(text){const out=[];let row=[],v='',q=false;for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];if(c=='"'){if(q&&n=='"'){v+='"';i++}else q=!q}else if(c==','&&!q){row.push(v);v=''}else if((c=='\n'||c=='\r')&&!q){if(c=='\r'&&n=='\n')i++;row.push(v);if(row.some(Boolean))out.push(row);row=[];v=''}else v+=c}return out}
 function num(v){let n=Number(v);return Number.isFinite(n)?n:0}
 async function load(){
- const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='./data/espn_qbs_'+level+'_'+y+'.json?ts='+Date.now();
+ const y=seasonEl.value||current, level=typeEl.value==='POST'?'post':'reg', url='./data/qbs_'+level+'_'+y+'.json?ts='+Date.now();
  statusEl.textContent='Loading '+y+' QB stats…';
  try{
    const r=await fetch(url,{cache:'no-store'});
    if(!r.ok)throw Error('HTTP '+r.status);
    const payload=await r.json();
    rows=Array.isArray(payload.players)?payload.players:[];
-   if(!rows.length)throw Error('ESPN returned no QB rows for '+y);
+   if(!rows.length)throw Error('nflverse returned no QB rows for '+y);
    document.querySelector('#updated').textContent='UPDATED • '+(payload.updated_at?new Date(payload.updated_at).toLocaleString():new Date().toLocaleString());
    render();
  }catch(e){
