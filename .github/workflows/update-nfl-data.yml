@@ -110,4 +110,5 @@ jobs:
           git add data
           git diff --cached --quiet && exit 0
           git commit -m "Update ESPN NFL QB statistics"
-          git push
+          git pull --rebase origin main
+          git push origin HEAD:main
