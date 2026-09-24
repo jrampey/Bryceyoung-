@@ -40,32 +40,7 @@ async function load(){
    const r=await fetch(url,{cache:'no-store'});
    if(!r.ok)throw Error('HTTP '+r.status);
    const payload=await r.json();
-   const raw=payload.raw||{};
-   const items=raw.athletes||raw.items||raw.statistics||[];
-   const findStats=o=>{
-     const vals={}; const walk=x=>{
-       if(!x)return; if(Array.isArray(x)){x.forEach(walk);return}
-       if(typeof x!=='object')return;
-       if(x.name && (x.value!==undefined||x.displayValue!==undefined)) vals[x.name]=x.value??x.displayValue;
-       Object.values(x).forEach(walk);
-     }; walk(o); return vals;
-   };
-   rows=items.map(item=>{
-     const athlete=item.athlete||item.player||item;
-     const s=findStats(item);
-     return {
-       player_id:String(athlete.id||item.id||''), player_display_name:athlete.displayName||athlete.fullName||athlete.name||item.displayName||'Unknown',
-       team:(athlete.team&&((athlete.team.abbreviation)||(athlete.team.shortDisplayName)))||item.team?.abbreviation||'—',
-       position:(athlete.position?.abbreviation)||item.position?.abbreviation||'QB',
-       games:s.gamesPlayed??s.games??0, completions:s.completions??0, attempts:s.passingAttempts??s.attempts??0,
-       passing_yards:s.passingYards??0, passing_tds:s.passingTouchdowns??s.touchdowns??0, interceptions:s.interceptions??0,
-       sacks:s.sacks??0, sack_yards:s.sackYardsLost??0, passing_air_yards:0, passing_yards_after_catch:0,
-       passing_first_downs:s.passingFirstDowns??0, passing_epa:0, passing_2pt_conversions:s.twoPointPassConvs??0,
-       carries:s.rushingAttempts??s.rushAttempts??0, rushing_yards:s.rushingYards??0, rushing_tds:s.rushingTouchdowns??0,
-       rushing_first_downs:s.rushingFirstDowns??0, rushing_epa:0, rushing_2pt_conversions:s.twoPointRushConvs??0,
-       fantasy_points:0, fantasy_points_ppr:0
-     };
-   }).filter(x=>x.player_display_name!=='Unknown');
+   rows=Array.isArray(payload.players)?payload.players:[];
    if(!rows.length)throw Error('ESPN returned no QB rows for '+y);
    document.querySelector('#updated').textContent='UPDATED • '+(payload.updated_at?new Date(payload.updated_at).toLocaleString():new Date().toLocaleString());
    render();
