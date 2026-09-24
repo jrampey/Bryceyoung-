@@ -24,10 +24,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Fetch ESPN NFL quarterback statistics
+      - name: Fetch ESPN quarterback statistics
         run: |
           python - <<'PY'
-          import json, urllib.parse, urllib.request
+          import json, urllib.request
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -40,22 +40,68 @@ jobs:
               with urllib.request.urlopen(req,timeout=60) as r:
                   return json.load(r)
 
+          def ref(url):
+              return url.replace("http://","https://").replace(".pvt",".com")
+
           for year in range(2023,current+1):
-              for kind,stype in (("reg",2),("post",3)):
-                  url=("https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/"
-                       "statistics/byathlete?"+urllib.parse.urlencode({
-                         "season":year,"seasontype":stype,"category":"passing","sort":"passingYards:desc"
-                       }))
+              athletes=get(f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/athletes?limit=1000")
+              players=[]
+              for item in athletes.get("items",[]):
                   try:
-                      raw=get(url)
-                      athletes=raw.get("athletes") or raw.get("items") or raw.get("statistics") or []
-                      payload={"season":year,"type":kind.upper(),"updated_at":datetime.now(timezone.utc).isoformat(),
-                               "source":"ESPN","raw":raw}
-                      (out/f"espn_qbs_{kind}_{year}.json").write_text(json.dumps(payload,separators=(",",":")),encoding="utf-8")
-                      print("ESPN",year,kind,"saved")
+                      a=get(ref(item["$ref"]))
+                      pos=(a.get("position") or {}).get("$ref","")
+                      if "/positions/8" not in pos and a.get("position",{}).get("abbreviation")!="QB":
+                          # Resolve position only when abbreviation is not embedded.
+                          if pos:
+                              p=get(ref(pos))
+                              if p.get("abbreviation")!="QB": continue
+                          else: continue
+                      aid=a.get("id")
+                      if not aid: continue
+                      team="—"
+                      teamref=(a.get("team") or {}).get("$ref")
+                      if teamref:
+                          try: team=get(ref(teamref)).get("abbreviation","—")
+                          except: pass
+                      for kind,stype in (("reg",2),("post",3)):
+                          try:
+                              s=get(f"https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/{year}/types/{stype}/athletes/{aid}/statistics/0")
+                          except:
+                              continue
+                          vals={}
+                          for cat in (s.get("splits") or {}).get("categories",[]):
+                              for stat in cat.get("stats",[]):
+                                  vals[stat.get("name","")]=stat.get("value",stat.get("displayValue",0))
+                          row={
+                            "player_id":str(aid),"player_display_name":a.get("displayName") or a.get("fullName") or "Unknown",
+                            "team":team,"position":"QB","games":vals.get("gamesPlayed",vals.get("games",0)),
+                            "completions":vals.get("completions",0),"attempts":vals.get("passingAttempts",0),
+                            "passing_yards":vals.get("passingYards",0),"passing_tds":vals.get("passingTouchdowns",vals.get("touchdowns",0)),
+                            "interceptions":vals.get("interceptions",0),"sacks":vals.get("sacks",0),"sack_yards":vals.get("sackYardsLost",0),
+                            "passing_air_yards":vals.get("airYards",0),"passing_yards_after_catch":vals.get("yardsAfterCatch",0),
+                            "passing_first_downs":vals.get("passingFirstDowns",0),"passing_epa":0,
+                            "passing_2pt_conversions":vals.get("twoPointPassConvs",0),"carries":vals.get("rushingAttempts",0),
+                            "rushing_yards":vals.get("rushingYards",0),"rushing_tds":vals.get("rushingTouchdowns",0),
+                            "rushing_first_downs":vals.get("rushingFirstDowns",0),"rushing_epa":0,
+                            "rushing_2pt_conversions":vals.get("twoPointRushConvs",0),"fantasy_points":0,"fantasy_points_ppr":0
+                          }
+                          path=out/f"espn_qbs_{kind}_{year}.json"
+                          old={"players":[]}
+                          if path.exists():
+                              try: old=json.loads(path.read_text())
+                              except: pass
+                          old["players"]=[x for x in old.get("players",[]) if x.get("player_id")!=str(aid)]
+                          old["players"].append(row)
+                          old.update({"season":year,"type":kind.upper(),"updated_at":datetime.now(timezone.utc).isoformat(),"source":"ESPN Core API"})
+                          path.write_text(json.dumps(old,separators=(",",":")),encoding="utf-8")
                   except Exception as e:
-                      print("FAILED",year,kind,e)
-                      raise
+                      print("skip athlete",e)
+
+          for p in out.glob("espn_qbs_*.json"):
+              d=json.loads(p.read_text())
+              d["players"].sort(key=lambda x: float(x.get("passing_yards") or 0),reverse=True)
+              p.write_text(json.dumps(d,separators=(",",":")),encoding="utf-8")
+              print(p,len(d["players"]))
           PY
       - name: Commit ESPN data
         run: |
