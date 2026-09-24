@@ -19,3 +19,7 @@ The site entry point is `index.html`.
 - Passing, rushing, EPA, sacks, air yards, YAC, first downs, and fantasy stats
 
 Data source: https://github.com/nflverse/nflverse-data
+
+
+## Automatic data refresh
+A GitHub Actions workflow downloads nflverse QB statistics every 6 hours and writes browser-friendly JSON files into `data/`. The webpage reads those local files instead of requesting nflverse directly, avoiding browser/CORS issues.
